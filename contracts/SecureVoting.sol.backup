@@ -1,0 +1,485 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+
+/**
+ * @title SecureVoting
+ * @dev FHE-enabled confidential voting system for corporate governance
+ * @notice Enables private shareholder voting on corporate proposals
+ */
+contract SecureVoting is ReentrancyGuard, Ownable {
+    using Counters for Counters.Counter;
+
+    // Zama FHEVM Contract Addresses (simulation)
+    address public constant FHEVM_EXECUTOR = 0x848B0066793BcC60346Da1F49049357399B8D595;
+    address public constant ACL_CONTRACT = 0x687820221192C5B662b25367F70076A37bc79b6c;
+    address public constant KMS_VERIFIER = 0x1364cBBf2cDF5032C47d8226a6f6FBD2AFCDacAC;
+    address public constant INPUT_VERIFIER = 0xbc91f3daD1A5F19F8390c400196e58073B6a0BC4;
+
+    enum ProposalType {
+        BOARD_ELECTION,      // Board member election
+        BUDGET_APPROVAL,     // Annual budget approval
+        MERGER_ACQUISITION,  // M&A decisions
+        DIVIDEND_DISTRIBUTION, // Dividend policy
+        BYLAW_AMENDMENT,     // Corporate bylaws changes
+        STRATEGIC_DECISION   // Strategic business decisions
+    }
+
+    enum VoteChoice {
+        ABSTAIN,
+        FOR,
+        AGAINST
+    }
+
+    struct Shareholder {
+        address wallet;
+        uint256 shares;
+        bool isVerified;
+        bool isActive;
+        string companyId; // Optional company identification
+    }
+
+    struct Proposal {
+        uint256 id;
+        address proposer;
+        string title;
+        string description;
+        ProposalType proposalType;
+        uint256 votingPower; // Minimum shares required to vote
+        uint256 deadline;
+        uint256 creationTime;
+        bool isActive;
+        bool isFinalized;
+        bytes32 encryptedTallyHash; // Hash of encrypted vote totals
+        
+        // Vote tallies (encrypted until finalized)
+        uint256 totalVotesFor;
+        uint256 totalVotesAgainst; 
+        uint256 totalVotesAbstain;
+        uint256 totalVotingPower;
+        uint256 participationCount;
+        
+        mapping(address => bool) hasVoted;
+        mapping(address => bytes32) encryptedVotes; // Store encrypted votes
+        address[] voters;
+    }
+
+    struct EncryptedVote {
+        address voter;
+        uint256 proposalId;
+        bytes32 encryptedChoice; // Encrypted vote choice
+        bytes32 encryptedShares; // Encrypted voting power used
+        bytes zkProof; // Zero-knowledge proof
+        uint256 timestamp;
+        bool isRevealed;
+        bool isVerified;
+    }
+
+    struct VotingRound {
+        uint256 id;
+        string name;
+        string description;
+        uint256 startTime;
+        uint256 endTime;
+        bool isActive;
+        uint256[] proposalIds;
+        mapping(uint256 => bool) containsProposal;
+    }
+
+    Counters.Counter private _proposalIds;
+    Counters.Counter private _voteIds;
+    Counters.Counter private _roundIds;
+
+    mapping(uint256 => Proposal) public proposals;
+    mapping(uint256 => EncryptedVote) public encryptedVotes;
+    mapping(address => Shareholder) public shareholders;
+    mapping(uint256 => VotingRound) public votingRounds;
+    mapping(address => uint256[]) public shareholderProposals;
+    mapping(address => uint256[]) public shareholderVotes;
+
+    // Access control
+    mapping(address => bool) public boardMembers;
+    mapping(address => bool) public proposalCreators;
+    
+    // Governance parameters
+    uint256 public constant MIN_VOTING_PERIOD = 1 days;
+    uint256 public constant MAX_VOTING_PERIOD = 30 days;
+    uint256 public constant MIN_PARTICIPATION_RATE = 5000; // 50% in basis points
+    uint256 public constant BASIS_POINTS = 10000;
+
+    // Events
+    event ShareholderRegistered(
+        address indexed wallet,
+        uint256 shares,
+        string companyId
+    );
+
+    event ProposalCreated(
+        uint256 indexed proposalId,
+        address indexed proposer,
+        string title,
+        ProposalType proposalType,
+        uint256 votingPower,
+        uint256 deadline
+    );
+
+    event EncryptedVoteCast(
+        uint256 indexed voteId,
+        uint256 indexed proposalId,
+        address indexed voter,
+        bytes32 encryptedChoice,
+        bytes32 encryptedShares,
+        uint256 timestamp
+    );
+
+    event VoteVerified(
+        uint256 indexed voteId,
+        uint256 indexed proposalId,
+        address indexed voter,
+        bool isValid
+    );
+
+    event VoteRevealed(
+        uint256 indexed voteId,
+        uint256 indexed proposalId,
+        address indexed voter,
+        VoteChoice choice,
+        uint256 votingPower
+    );
+
+    event ProposalFinalized(
+        uint256 indexed proposalId,
+        uint256 totalFor,
+        uint256 totalAgainst,
+        uint256 totalAbstain,
+        uint256 totalVotingPower,
+        bool passed
+    );
+
+    event VotingRoundCreated(
+        uint256 indexed roundId,
+        string name,
+        uint256 startTime,
+        uint256 endTime
+    );
+
+    event BoardMemberAdded(address indexed member);
+    event BoardMemberRemoved(address indexed member);
+
+    modifier onlyBoardMember() {
+        require(boardMembers[msg.sender] || msg.sender == owner(), "Only board members");
+        _;
+    }
+
+    modifier onlyShareholder() {
+        require(shareholders[msg.sender].isActive, "Not an active shareholder");
+        _;
+    }
+
+    modifier validProposal(uint256 _proposalId) {
+        require(_proposalId > 0 && _proposalId <= _proposalIds.current(), "Invalid proposal ID");
+        _;
+    }
+
+    modifier onlyVerifiedShareholder() {
+        require(shareholders[msg.sender].isVerified, "Shareholder not verified");
+        _;
+    }
+
+    constructor() Ownable(msg.sender) {}
+
+    /**
+     * @dev Register a new shareholder with voting rights
+     */
+    function registerShareholder(
+        address _wallet,
+        uint256 _shares,
+        string memory _companyId
+    ) external onlyBoardMember {
+        require(_wallet != address(0), "Invalid wallet address");
+        require(_shares > 0, "Shares must be greater than 0");
+
+        shareholders[_wallet] = Shareholder({
+            wallet: _wallet,
+            shares: _shares,
+            isVerified: true,
+            isActive: true,
+            companyId: _companyId
+        });
+
+        emit ShareholderRegistered(_wallet, _shares, _companyId);
+    }
+
+    /**
+     * @dev Create a new voting proposal
+     */
+    function createProposal(
+        string memory _title,
+        string memory _description,
+        ProposalType _proposalType,
+        uint256 _votingPeriodDays,
+        uint256 _minVotingPower
+    ) external onlyBoardMember returns (uint256) {
+        require(bytes(_title).length > 0, "Title cannot be empty");
+        require(_votingPeriodDays >= 1 && _votingPeriodDays <= 30, "Invalid voting period");
+
+        _proposalIds.increment();
+        uint256 proposalId = _proposalIds.current();
+
+        Proposal storage proposal = proposals[proposalId];
+        proposal.id = proposalId;
+        proposal.proposer = msg.sender;
+        proposal.title = _title;
+        proposal.description = _description;
+        proposal.proposalType = _proposalType;
+        proposal.votingPower = _minVotingPower;
+        proposal.deadline = block.timestamp + (_votingPeriodDays * 1 days);
+        proposal.creationTime = block.timestamp;
+        proposal.isActive = true;
+
+        shareholderProposals[msg.sender].push(proposalId);
+
+        emit ProposalCreated(
+            proposalId,
+            msg.sender,
+            _title,
+            _proposalType,
+            _minVotingPower,
+            proposal.deadline
+        );
+
+        return proposalId;
+    }
+
+    /**
+     * @dev Cast an encrypted vote on a proposal
+     */
+    function castEncryptedVote(
+        uint256 _proposalId,
+        bytes32 _encryptedChoice,
+        bytes32 _encryptedShares,
+        bytes calldata _zkProof
+    ) external nonReentrant validProposal(_proposalId) onlyVerifiedShareholder {
+        Proposal storage proposal = proposals[_proposalId];
+        require(proposal.isActive, "Proposal is not active");
+        require(block.timestamp < proposal.deadline, "Voting period has ended");
+        require(!proposal.hasVoted[msg.sender], "Already voted on this proposal");
+        require(shareholders[msg.sender].shares >= proposal.votingPower, "Insufficient voting power");
+
+        _voteIds.increment();
+        uint256 voteId = _voteIds.current();
+
+        // Store encrypted vote
+        encryptedVotes[voteId] = EncryptedVote({
+            voter: msg.sender,
+            proposalId: _proposalId,
+            encryptedChoice: _encryptedChoice,
+            encryptedShares: _encryptedShares,
+            zkProof: _zkProof,
+            timestamp: block.timestamp,
+            isRevealed: false,
+            isVerified: false
+        });
+
+        // Mark as voted
+        proposal.hasVoted[msg.sender] = true;
+        proposal.encryptedVotes[msg.sender] = _encryptedChoice;
+        proposal.voters.push(msg.sender);
+
+        shareholderVotes[msg.sender].push(voteId);
+
+        emit EncryptedVoteCast(
+            voteId,
+            _proposalId,
+            msg.sender,
+            _encryptedChoice,
+            _encryptedShares,
+            block.timestamp
+        );
+    }
+
+    /**
+     * @dev Verify an encrypted vote using FHE verification
+     */
+    function verifyEncryptedVote(
+        uint256 _voteId,
+        bytes calldata _verificationProof
+    ) external validProposal(encryptedVotes[_voteId].proposalId) {
+        EncryptedVote storage vote = encryptedVotes[_voteId];
+        require(!vote.isVerified, "Vote already verified");
+
+        // Simulate FHE verification
+        bool isValid = _verifyVoteWithFHE(_voteId, _verificationProof);
+        vote.isVerified = isValid;
+
+        emit VoteVerified(
+            _voteId,
+            vote.proposalId,
+            vote.voter,
+            isValid
+        );
+    }
+
+    /**
+     * @dev Reveal a vote after the voting period (optional)
+     */
+    function revealVote(
+        uint256 _voteId,
+        VoteChoice _choice,
+        uint256 _votingPower,
+        bytes32 _revealProof
+    ) external {
+        EncryptedVote storage vote = encryptedVotes[_voteId];
+        require(vote.voter == msg.sender, "Only voter can reveal their vote");
+        require(!vote.isRevealed, "Vote already revealed");
+        require(vote.isVerified, "Vote not verified");
+
+        Proposal storage proposal = proposals[vote.proposalId];
+        require(block.timestamp >= proposal.deadline, "Voting period not ended");
+
+        // Verify reveal proof
+        require(_verifyRevealProof(vote.encryptedChoice, uint256(_choice), _revealProof), 
+                "Invalid reveal proof");
+
+        vote.isRevealed = true;
+
+        // Update proposal tallies
+        if (_choice == VoteChoice.FOR) {
+            proposal.totalVotesFor += _votingPower;
+        } else if (_choice == VoteChoice.AGAINST) {
+            proposal.totalVotesAgainst += _votingPower;
+        } else {
+            proposal.totalVotesAbstain += _votingPower;
+        }
+        
+        proposal.totalVotingPower += _votingPower;
+        proposal.participationCount++;
+
+        emit VoteRevealed(_voteId, vote.proposalId, msg.sender, _choice, _votingPower);
+    }
+
+    /**
+     * @dev Finalize a proposal and calculate results
+     */
+    function finalizeProposal(
+        uint256 _proposalId,
+        bytes32 _finalTallyHash
+    ) external onlyBoardMember validProposal(_proposalId) {
+        Proposal storage proposal = proposals[_proposalId];
+        require(proposal.isActive, "Proposal is not active");
+        require(block.timestamp >= proposal.deadline, "Voting period not ended");
+        require(!proposal.isFinalized, "Proposal already finalized");
+
+        proposal.isActive = false;
+        proposal.isFinalized = true;
+        proposal.encryptedTallyHash = _finalTallyHash;
+
+        // Determine if proposal passed (simple majority of voting power)
+        bool passed = proposal.totalVotesFor > proposal.totalVotesAgainst;
+
+        emit ProposalFinalized(
+            _proposalId,
+            proposal.totalVotesFor,
+            proposal.totalVotesAgainst,
+            proposal.totalVotesAbstain,
+            proposal.totalVotingPower,
+            passed
+        );
+    }
+
+    /**
+     * @dev Create a voting round with multiple proposals
+     */
+    function createVotingRound(
+        string memory _name,
+        string memory _description,
+        uint256 _durationDays,
+        uint256[] memory proposalIds
+    ) external onlyBoardMember returns (uint256) {
+        require(bytes(_name).length > 0, "Name cannot be empty");
+        require(_durationDays >= 1 && _durationDays <= 30, "Invalid duration");
+
+        _roundIds.increment();
+        uint256 roundId = _roundIds.current();
+
+        VotingRound storage round = votingRounds[roundId];
+        round.id = roundId;
+        round.name = _name;
+        round.description = _description;
+        round.startTime = block.timestamp;
+        round.endTime = block.timestamp + (_durationDays * 1 days);
+        round.isActive = true;
+
+        for (uint256 i = 0; i < proposalIds.length; i++) {
+            require(proposalIds[i] <= _proposalIds.current(), "Invalid proposal ID");
+            round.proposalIds.push(proposalIds[i]);
+            round.containsProposal[proposalIds[i]] = true;
+        }
+
+        emit VotingRoundCreated(roundId, _name, round.startTime, round.endTime);
+        return roundId;
+    }
+
+    /**
+     * @dev Add board member
+     */
+    function addBoardMember(address _member) external onlyOwner {
+        require(_member != address(0), "Invalid address");
+        boardMembers[_member] = true;
+        emit BoardMemberAdded(_member);
+    }
+
+    /**
+     * @dev Remove board member
+     */
+    function removeBoardMember(address _member) external onlyOwner {
+        boardMembers[_member] = false;
+        emit BoardMemberRemoved(_member);
+    }
+
+    /**
+     * @dev Internal FHE verification simulation
+     */
+    function _verifyVoteWithFHE(uint256 _voteId, bytes calldata _proof) internal view returns (bool) {
+        // Simulate FHE verification
+        EncryptedVote storage vote = encryptedVotes[_voteId];
+        bytes32 proofHash = keccak256(abi.encodePacked(_proof, vote.encryptedChoice));
+        return uint256(proofHash) % 2 == 1;
+    }
+
+    /**
+     * @dev Verify reveal proof
+     */
+    function _verifyRevealProof(
+        bytes32 _encryptedChoice,
+        uint256 _choice,
+        bytes32 _proof
+    ) internal pure returns (bool) {
+        bytes32 expectedProof = keccak256(abi.encodePacked(_choice, _encryptedChoice));
+        return expectedProof == _proof;
+    }
+
+function getProposal(uint256 _proposalId) external view validProposal(_proposalId) returns (Proposal memory) {        return proposals[_proposalId];    }    function getProposalResults(uint256 _proposalId) external view validProposal(_proposalId) returns (uint256, uint256, uint256, uint256, uint256) {        Proposal storage p = proposals[_proposalId];        return (p.totalVotesFor, p.totalVotesAgainst, p.totalVotesAbstain, p.totalVotingPower, p.participationCount);    }    function getShareholder(address _wallet) external view returns (Shareholder memory) {        return shareholders[_wallet];    }    function getEncryptedVote(uint256 _voteId) external view returns (EncryptedVote memory) {        return encryptedVotes[_voteId];    }    function getVotingRound(uint256 _roundId) external view returns (VotingRound memory) {        return votingRounds[_roundId];    }
+    function getTotalProposals() external view returns (uint256) {
+        return _proposalIds.current();
+    }
+
+    function getTotalVotes() external view returns (uint256) {
+        return _voteIds.current();
+    }
+
+    function getTotalRounds() external view returns (uint256) {
+        return _roundIds.current();
+    }
+
+    function hasVoted(uint256 _proposalId, address _voter) external view validProposal(_proposalId) returns (bool) {
+        return proposals[_proposalId].hasVoted[_voter];
+    }
+
+    function isBoardMember(address _member) external view returns (bool) {
+        return boardMembers[_member] || _member == owner();
+    }
+}

@@ -1,0 +1,452 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+// Try multiple possible import paths for FHEVM 0.7.0
+// import "fhevm/lib/TFHE.sol";
+// import "@fhevm/solidity/contracts/TFHE.sol";
+// For now, let's create a version that compiles without FHE and can be upgraded
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/**
+ * @title CorporateGovernanceFHEFixed
+ * @dev 企业机密股东投票系统 - FHE兼容版本
+ * @notice 为FHE集成做准备的企业治理合约
+ */
+contract CorporateGovernanceFHEFixed is Ownable {
+    
+    // 提案类型枚举
+    enum ProposalType {
+        BOARD_ELECTION,        // 0: 董事会选举 (需要>50%)
+        BUDGET_APPROVAL,       // 1: 预算批准 (需要>60%)
+        MERGER_DECISION,       // 2: 并购决策 (需要>75%)
+        DIVIDEND_DISTRIBUTION, // 3: 股息分配 (需要>50%)
+        BYLAW_AMENDMENT,       // 4: 章程修改 (需要>75%)
+        STRATEGIC_DECISION     // 5: 战略决策 (需要>60%)
+    }
+    
+    // 股东信息结构 (FHE就绪)
+    struct Shareholder {
+        bool isRegistered;
+        uint32 shares;           // 公开股份 (可升级为 euint32)
+        uint32 encryptedShares;  // 预留字段，用于FHE升级
+        string companyId;
+        string name;
+        bool isActive;
+    }
+    
+    // 提案基本信息
+    struct ProposalBasic {
+        uint256 id;
+        ProposalType proposalType;
+        address proposer;
+        uint256 creationTime;
+        uint256 deadline;
+        bool isActive;
+        bool isFinalized;
+    }
+    
+    // 提案内容
+    struct ProposalContent {
+        string title;
+        string description;
+        string attachmentHash;
+    }
+    
+    // 投票统计 (FHE升级就绪)
+    struct VoteStats {
+        uint32 forVotes;         // 明文赞成票 (可升级为 euint32)
+        uint32 againstVotes;     // 明文反对票 (可升级为 euint32)  
+        uint32 abstainVotes;     // 明文弃权票 (可升级为 euint32)
+        uint256 participationCount;
+        uint256 requiredThreshold;
+    }
+    
+    // 公司基本信息
+    string public companyName;
+    string public stockSymbol;
+    string public registrationNumber;
+    uint256 public totalShares;
+    uint256 public totalShareholders;
+    bool public isInitialized;
+    
+    // 状态变量
+    mapping(address => Shareholder) public shareholders;
+    mapping(address => bool) public boardMembers;
+    address[] public shareholdersList;
+    address[] public boardMembersList;
+    
+    // 提案数据存储
+    ProposalBasic[] public proposalBasics;
+    mapping(uint256 => ProposalContent) public proposalContents;
+    mapping(uint256 => VoteStats) public voteStats;
+    
+    // 投票记录
+    mapping(uint256 => mapping(address => bool)) public hasVoted;
+    mapping(uint256 => mapping(address => uint8)) public voteChoices; // 0=弃权, 1=赞成, 2=反对
+    
+    // 提案类型阈值设置
+    mapping(ProposalType => uint256) public thresholds;
+    
+    // 事件定义 (FHE就绪)
+    event CompanyInitialized(string name, string symbol, string regNumber);
+    event ShareholderRegistered(address indexed shareholder, string companyId, string name);
+    event BoardMemberAdded(address indexed member);
+    event BoardMemberRemoved(address indexed member);
+    event ProposalCreated(uint256 indexed proposalId, ProposalType proposalType, string title, address indexed proposer);
+    event VoteCast(uint256 indexed proposalId, address indexed voter); // FHE版本不暴露选择
+    event ProposalFinalized(uint256 indexed proposalId, bool passed, uint256 participationCount);
+    
+    // 修饰器
+    modifier onlyBoardMember() {
+        require(boardMembers[msg.sender], "Only board members can perform this action");
+        _;
+    }
+    
+    modifier onlyVerifiedShareholder() {
+        require(shareholders[msg.sender].isRegistered && shareholders[msg.sender].isActive, "Only verified shareholders can vote");
+        _;
+    }
+    
+    modifier validProposal(uint256 _proposalId) {
+        require(_proposalId > 0 && _proposalId <= proposalBasics.length, "Invalid proposal ID");
+        _;
+    }
+    
+    modifier proposalActive(uint256 _proposalId) {
+        ProposalBasic storage basic = proposalBasics[_proposalId - 1];
+        require(basic.isActive, "Proposal is not active");
+        require(block.timestamp <= basic.deadline, "Voting period has ended");
+        _;
+    }
+    
+    constructor() Ownable(msg.sender) {
+        // 初始化不同提案类型的通过阈值
+        thresholds[ProposalType.BOARD_ELECTION] = 50;
+        thresholds[ProposalType.BUDGET_APPROVAL] = 60;
+        thresholds[ProposalType.MERGER_DECISION] = 75;
+        thresholds[ProposalType.DIVIDEND_DISTRIBUTION] = 50;
+        thresholds[ProposalType.BYLAW_AMENDMENT] = 75;
+        thresholds[ProposalType.STRATEGIC_DECISION] = 60;
+        
+        boardMembers[msg.sender] = true;
+        boardMembersList.push(msg.sender);
+    }
+    
+    /**
+     * @dev 初始化公司信息
+     */
+    function initializeCompany(
+        string memory _name,
+        string memory _stockSymbol,
+        string memory _registrationNumber,
+        uint256 _totalShares
+    ) external onlyOwner {
+        require(!isInitialized, "Company already initialized");
+        require(_totalShares > 0, "Total shares must be greater than 0");
+        
+        companyName = _name;
+        stockSymbol = _stockSymbol;
+        registrationNumber = _registrationNumber;
+        totalShares = _totalShares;
+        isInitialized = true;
+        
+        emit CompanyInitialized(_name, _stockSymbol, _registrationNumber);
+    }
+    
+    /**
+     * @dev 注册股东 (FHE升级就绪)
+     */
+    function registerShareholderPlain(
+        address _shareholder,
+        uint32 _shares,
+        string memory _companyId,
+        string memory _name
+    ) external onlyBoardMember {
+        require(_shareholder != address(0), "Invalid shareholder address");
+        require(_shares > 0, "Shares must be greater than 0");
+        require(!shareholders[_shareholder].isRegistered, "Shareholder already registered");
+        
+        shareholders[_shareholder] = Shareholder({
+            isRegistered: true,
+            shares: _shares,
+            encryptedShares: _shares, // 预留，FHE升级时使用
+            companyId: _companyId,
+            name: _name,
+            isActive: true
+        });
+        
+        shareholdersList.push(_shareholder);
+        totalShareholders++;
+        
+        emit ShareholderRegistered(_shareholder, _companyId, _name);
+    }
+    
+    /**
+     * @dev 添加董事会成员
+     */
+    function addBoardMember(address _member) external onlyOwner {
+        require(_member != address(0), "Invalid member address");
+        require(!boardMembers[_member], "Already a board member");
+        
+        boardMembers[_member] = true;
+        boardMembersList.push(_member);
+        
+        emit BoardMemberAdded(_member);
+    }
+    
+    /**
+     * @dev 移除董事会成员  
+     */
+    function removeBoardMember(address _member) external onlyOwner {
+        require(boardMembers[_member], "Not a board member");
+        require(_member != owner(), "Cannot remove contract owner");
+        
+        boardMembers[_member] = false;
+        
+        for (uint i = 0; i < boardMembersList.length; i++) {
+            if (boardMembersList[i] == _member) {
+                boardMembersList[i] = boardMembersList[boardMembersList.length - 1];
+                boardMembersList.pop();
+                break;
+            }
+        }
+        
+        emit BoardMemberRemoved(_member);
+    }
+    
+    /**
+     * @dev 创建新提案
+     */
+    function createProposal(
+        uint8 _type,
+        string memory _title,
+        string memory _description,
+        string memory _attachmentHash,
+        uint256 _durationDays
+    ) external onlyBoardMember returns (uint256) {
+        require(_type <= uint8(ProposalType.STRATEGIC_DECISION), "Invalid proposal type");
+        require(bytes(_title).length > 0, "Title cannot be empty");
+        require(_durationDays > 0 && _durationDays <= 365, "Invalid duration");
+        
+        ProposalType proposalType = ProposalType(_type);
+        uint256 proposalId = proposalBasics.length + 1;
+        
+        // 创建提案基本信息
+        proposalBasics.push(ProposalBasic({
+            id: proposalId,
+            proposalType: proposalType,
+            proposer: msg.sender,
+            creationTime: block.timestamp,
+            deadline: block.timestamp + (_durationDays * 1 days),
+            isActive: true,
+            isFinalized: false
+        }));
+        
+        // 存储提案内容
+        proposalContents[proposalId] = ProposalContent({
+            title: _title,
+            description: _description,
+            attachmentHash: _attachmentHash
+        });
+        
+        // 初始化投票统计
+        voteStats[proposalId] = VoteStats({
+            forVotes: 0,
+            againstVotes: 0,
+            abstainVotes: 0,
+            participationCount: 0,
+            requiredThreshold: thresholds[proposalType]
+        });
+        
+        emit ProposalCreated(proposalId, proposalType, _title, msg.sender);
+        return proposalId;
+    }
+    
+    /**
+     * @dev 投票 (FHE升级就绪版本)
+     */
+    function castVotePlain(uint256 _proposalId, uint8 _choice) 
+        external validProposal(_proposalId) proposalActive(_proposalId) onlyVerifiedShareholder 
+    {
+        require(_choice <= 2, "Invalid vote choice");
+        require(!hasVoted[_proposalId][msg.sender], "Already voted on this proposal");
+        
+        hasVoted[_proposalId][msg.sender] = true;
+        voteChoices[_proposalId][msg.sender] = _choice;
+        
+        VoteStats storage stats = voteStats[_proposalId];
+        Shareholder storage voter = shareholders[msg.sender];
+        
+        if (_choice == 0) { // 弃权
+            stats.abstainVotes += voter.shares;
+        } else if (_choice == 1) { // 赞成
+            stats.forVotes += voter.shares;
+        } else { // 反对
+            stats.againstVotes += voter.shares;
+        }
+        
+        stats.participationCount++;
+        
+        emit VoteCast(_proposalId, msg.sender);
+    }
+    
+    /**
+     * @dev 机密投票 (占位函数，等待FHE库正确导入)
+     * 这个函数将在FHE库可用时替换为真正的加密投票
+     */
+    function castConfidentialVote(uint256 _proposalId, uint8 _encryptedChoice) 
+        external validProposal(_proposalId) proposalActive(_proposalId) onlyVerifiedShareholder 
+    {
+        // 临时使用明文投票，可在FHE库可用时升级
+        require(_encryptedChoice <= 2, "Invalid vote choice");
+        require(!hasVoted[_proposalId][msg.sender], "Already voted on this proposal");
+        
+        hasVoted[_proposalId][msg.sender] = true;
+        voteChoices[_proposalId][msg.sender] = _encryptedChoice;
+        
+        VoteStats storage stats = voteStats[_proposalId];
+        Shareholder storage voter = shareholders[msg.sender];
+        
+        if (_encryptedChoice == 0) {
+            stats.abstainVotes += voter.shares;
+        } else if (_encryptedChoice == 1) {
+            stats.forVotes += voter.shares;
+        } else {
+            stats.againstVotes += voter.shares;
+        }
+        
+        stats.participationCount++;
+        
+        emit VoteCast(_proposalId, msg.sender);
+    }
+    
+    /**
+     * @dev 结束提案
+     */
+    function finalizeProposal(uint256 _proposalId) 
+        external validProposal(_proposalId) onlyBoardMember 
+    {
+        ProposalBasic storage basic = proposalBasics[_proposalId - 1];
+        require(basic.isActive, "Proposal already finalized");
+        require(block.timestamp > basic.deadline, "Voting period not ended");
+        
+        basic.isActive = false;
+        basic.isFinalized = true;
+        
+        VoteStats storage stats = voteStats[_proposalId];
+        uint256 totalVotes = stats.forVotes + stats.againstVotes;
+        bool passed = false;
+        
+        if (totalVotes > 0) {
+            passed = (stats.forVotes * 100 / totalVotes) > stats.requiredThreshold;
+        }
+        
+        emit ProposalFinalized(_proposalId, passed, stats.participationCount);
+    }
+    
+    /**
+     * @dev 获取投票结果 (仅董事会成员)
+     */
+    function getDecryptedResults(uint256 _proposalId) 
+        external view validProposal(_proposalId) onlyBoardMember
+        returns (uint32, uint32, uint32, bool) 
+    {
+        ProposalBasic storage basic = proposalBasics[_proposalId - 1];
+        require(basic.isFinalized, "Proposal not finalized");
+        
+        VoteStats storage stats = voteStats[_proposalId];
+        uint256 totalVotes = stats.forVotes + stats.againstVotes;
+        bool passed = false;
+        
+        if (totalVotes > 0) {
+            passed = (stats.forVotes * 100 / totalVotes) > stats.requiredThreshold;
+        }
+        
+        return (stats.forVotes, stats.againstVotes, stats.abstainVotes, passed);
+    }
+    
+    /**
+     * @dev 获取提案基本信息
+     */
+    function getProposalInfo(uint256 _proposalId) 
+        external view validProposal(_proposalId)
+        returns (
+            uint256 id,
+            uint8 proposalType,
+            string memory title,
+            string memory description,
+            address proposer,
+            uint256 creationTime,
+            uint256 deadline,
+            bool isActive,
+            bool isFinalized,
+            uint256 participationCount,
+            uint256 requiredThreshold
+        ) 
+    {
+        ProposalBasic storage basic = proposalBasics[_proposalId - 1];
+        return (
+            basic.id,
+            uint8(basic.proposalType),
+            proposalContents[_proposalId].title,
+            proposalContents[_proposalId].description,
+            basic.proposer,
+            basic.creationTime,
+            basic.deadline,
+            basic.isActive,
+            basic.isFinalized,
+            voteStats[_proposalId].participationCount,
+            voteStats[_proposalId].requiredThreshold
+        );
+    }
+    
+    function hasVotedOn(uint256 _proposalId, address _voter) 
+        external view validProposal(_proposalId) returns (bool) 
+    {
+        return hasVoted[_proposalId][_voter];
+    }
+    
+    function getTotalProposals() external view returns (uint256) {
+        return proposalBasics.length;
+    }
+    
+    function isBoardMember(address _member) external view returns (bool) {
+        return boardMembers[_member];
+    }
+    
+    function getCompanyInfo() external view returns (
+        string memory name,
+        string memory stockSymbol, 
+        string memory registrationNumber,
+        uint256 totalShares,
+        uint256 totalShareholders,
+        address[] memory boardMembers
+    ) {
+        return (
+            companyName,
+            stockSymbol,
+            registrationNumber,
+            totalShares,
+            totalShareholders,
+            boardMembersList
+        );
+    }
+    
+    function getShareholderInfo(address _shareholder) external view returns (
+        bool isRegistered,
+        uint32 shares,
+        string memory companyId,
+        string memory name,
+        bool isActive
+    ) {
+        Shareholder storage sh = shareholders[_shareholder];
+        return (
+            sh.isRegistered,
+            sh.shares,
+            sh.companyId,
+            sh.name,
+            sh.isActive
+        );
+    }
+}

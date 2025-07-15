@@ -1,0 +1,291 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import "@fhevm/solidity/contracts/TFHE.sol";
+
+contract FHEVoting {
+    struct Proposal {
+        uint256 id;
+        string title;
+        string description;
+        euint32 forVotes;
+        euint32 againstVotes;
+        euint32 abstainVotes;
+        uint256 deadline;
+        bool active;
+        address proposer;
+        bool finalized;
+    }
+
+    struct Voter {
+        address wallet;
+        euint32 weight;
+        bool authorized;
+    }
+
+    mapping(uint256 => Proposal) private proposals;
+    mapping(uint256 => mapping(address => bool)) public hasVoted;
+    mapping(address => Voter) private voters;
+    mapping(address => bool) public isAuthorized;
+    
+    uint256 public proposalCount;
+    address public owner;
+    
+    event ProposalCreated(uint256 indexed proposalId, string title, address proposer);
+    event VoteCast(uint256 indexed proposalId, address voter);
+    event ProposalFinalized(uint256 indexed proposalId);
+    event VoterAuthorized(address indexed voter);
+    
+    constructor() {
+        owner = msg.sender;
+        isAuthorized[msg.sender] = true;
+        
+        // Initialize owner with voting weight
+        voters[msg.sender] = Voter({
+            wallet: msg.sender,
+            weight: TFHE.asEuint32(1),
+            authorized: true
+        });
+    }
+    
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner");
+        _;
+    }
+    
+    modifier onlyAuthorized() {
+        require(isAuthorized[msg.sender], "Not authorized");
+        _;
+    }
+    
+    modifier validProposal(uint256 _proposalId) {
+        require(_proposalId > 0 && _proposalId <= proposalCount, "Invalid proposal");
+        _;
+    }
+
+    /**
+     * @dev Authorize a voter with encrypted voting weight
+     */
+    function authorizeVoter(address _voter, inEuint32 calldata _encryptedWeight) external onlyOwner {
+        require(_voter != address(0), "Invalid address");
+        require(!isAuthorized[_voter], "Already authorized");
+        
+        euint32 weight = TFHE.asEuint32(_encryptedWeight);
+        
+        voters[_voter] = Voter({
+            wallet: _voter,
+            weight: weight,
+            authorized: true
+        });
+        
+        isAuthorized[_voter] = true;
+        emit VoterAuthorized(_voter);
+    }
+
+    /**
+     * @dev Create a new proposal
+     */
+    function createProposal(
+        string memory _title, 
+        string memory _description, 
+        uint256 _durationDays
+    ) external onlyAuthorized returns (uint256) {
+        require(bytes(_title).length > 0, "Title cannot be empty");
+        require(_durationDays >= 1 && _durationDays <= 30, "Invalid duration");
+        
+        proposalCount++;
+        
+        proposals[proposalCount] = Proposal({
+            id: proposalCount,
+            title: _title,
+            description: _description,
+            forVotes: TFHE.asEuint32(0),
+            againstVotes: TFHE.asEuint32(0),
+            abstainVotes: TFHE.asEuint32(0),
+            deadline: block.timestamp + (_durationDays * 1 days),
+            active: true,
+            proposer: msg.sender,
+            finalized: false
+        });
+        
+        emit ProposalCreated(proposalCount, _title, msg.sender);
+        return proposalCount;
+    }
+
+    /**
+     * @dev Cast an encrypted vote
+     */
+    function castVote(
+        uint256 _proposalId, 
+        inEuint8 calldata _encryptedChoice
+    ) external validProposal(_proposalId) onlyAuthorized {
+        require(!hasVoted[_proposalId][msg.sender], "Already voted");
+        require(proposals[_proposalId].active, "Proposal not active");
+        require(block.timestamp < proposals[_proposalId].deadline, "Voting ended");
+        
+        euint8 choice = TFHE.asEuint8(_encryptedChoice);
+        euint32 voterWeight = voters[msg.sender].weight;
+        
+        // Create conditions for vote counting
+        ebool isFor = TFHE.eq(choice, TFHE.asEuint8(1));
+        ebool isAgainst = TFHE.eq(choice, TFHE.asEuint8(2));
+        // Default case (choice == 0) is abstain
+        
+        // Update vote counts based on encrypted choice
+        proposals[_proposalId].forVotes = TFHE.add(
+            proposals[_proposalId].forVotes,
+            TFHE.select(isFor, voterWeight, TFHE.asEuint32(0))
+        );
+            
+        proposals[_proposalId].againstVotes = TFHE.add(
+            proposals[_proposalId].againstVotes,
+            TFHE.select(isAgainst, voterWeight, TFHE.asEuint32(0))
+        );
+            
+        proposals[_proposalId].abstainVotes = TFHE.add(
+            proposals[_proposalId].abstainVotes,
+            TFHE.select(TFHE.not(TFHE.or(isFor, isAgainst)), voterWeight, TFHE.asEuint32(0))
+        );
+        
+        hasVoted[_proposalId][msg.sender] = true;
+        emit VoteCast(_proposalId, msg.sender);
+    }
+
+    /**
+     * @dev Finalize proposal (only owner)
+     */
+    function finalizeProposal(uint256 _proposalId) external validProposal(_proposalId) onlyOwner {
+        require(proposals[_proposalId].active, "Proposal not active");
+        require(block.timestamp >= proposals[_proposalId].deadline, "Voting period not ended");
+        require(!proposals[_proposalId].finalized, "Already finalized");
+        
+        proposals[_proposalId].active = false;
+        proposals[_proposalId].finalized = true;
+        
+        emit ProposalFinalized(_proposalId);
+    }
+
+    /**
+     * @dev Get proposal basic info (non-encrypted data)
+     */
+    function getProposalInfo(uint256 _proposalId) external view validProposal(_proposalId) returns (
+        uint256 id,
+        string memory title,
+        string memory description,
+        uint256 deadline,
+        bool active,
+        address proposer,
+        bool finalized
+    ) {
+        Proposal storage p = proposals[_proposalId];
+        return (
+            p.id,
+            p.title,
+            p.description,
+            p.deadline,
+            p.active,
+            p.proposer,
+            p.finalized
+        );
+    }
+
+    /**
+     * @dev Decrypt and get proposal results (only owner, only after finalization)
+     */
+    function getDecryptedResults(uint256 _proposalId) external view validProposal(_proposalId) onlyOwner returns (
+        uint32 forVotes,
+        uint32 againstVotes,
+        uint32 abstainVotes
+    ) {
+        require(proposals[_proposalId].finalized, "Proposal not finalized");
+        
+        Proposal storage proposal = proposals[_proposalId];
+        return (
+            TFHE.decrypt(proposal.forVotes),
+            TFHE.decrypt(proposal.againstVotes),
+            TFHE.decrypt(proposal.abstainVotes)
+        );
+    }
+
+    /**
+     * @dev Check if address has voted on proposal
+     */
+    function hasVotedOn(uint256 _proposalId, address _voter) external view validProposal(_proposalId) returns (bool) {
+        return hasVoted[_proposalId][_voter];
+    }
+
+    /**
+     * @dev Get total number of proposals
+     */
+    function getTotalProposals() external view returns (uint256) {
+        return proposalCount;
+    }
+
+    /**
+     * @dev Check if address is authorized to vote
+     */
+    function checkAuthorization(address _voter) external view returns (bool) {
+        return isAuthorized[_voter];
+    }
+
+    /**
+     * @dev Transfer ownership
+     */
+    function transferOwnership(address _newOwner) external onlyOwner {
+        require(_newOwner != address(0), "Invalid address");
+        owner = _newOwner;
+    }
+
+    /**
+     * @dev Authorize voter with plain weight (for testing)
+     */
+    function authorizeVoterPlain(address _voter, uint32 _weight) external onlyOwner {
+        require(_voter != address(0), "Invalid address");
+        require(!isAuthorized[_voter], "Already authorized");
+        
+        voters[_voter] = Voter({
+            wallet: _voter,
+            weight: TFHE.asEuint32(_weight),
+            authorized: true
+        });
+        
+        isAuthorized[_voter] = true;
+        emit VoterAuthorized(_voter);
+    }
+
+    /**
+     * @dev Cast vote with plain choice (for testing)
+     */
+    function castVotePlain(uint256 _proposalId, uint8 _choice) external validProposal(_proposalId) onlyAuthorized {
+        require(!hasVoted[_proposalId][msg.sender], "Already voted");
+        require(proposals[_proposalId].active, "Proposal not active");
+        require(block.timestamp < proposals[_proposalId].deadline, "Voting ended");
+        require(_choice <= 2, "Invalid choice");
+        
+        euint8 choice = TFHE.asEuint8(_choice);
+        euint32 voterWeight = voters[msg.sender].weight;
+        
+        // Create conditions for vote counting
+        ebool isFor = TFHE.eq(choice, TFHE.asEuint8(1));
+        ebool isAgainst = TFHE.eq(choice, TFHE.asEuint8(2));
+        
+        // Update vote counts based on encrypted choice
+        proposals[_proposalId].forVotes = TFHE.add(
+            proposals[_proposalId].forVotes,
+            TFHE.select(isFor, voterWeight, TFHE.asEuint32(0))
+        );
+            
+        proposals[_proposalId].againstVotes = TFHE.add(
+            proposals[_proposalId].againstVotes,
+            TFHE.select(isAgainst, voterWeight, TFHE.asEuint32(0))
+        );
+            
+        proposals[_proposalId].abstainVotes = TFHE.add(
+            proposals[_proposalId].abstainVotes,
+            TFHE.select(TFHE.not(TFHE.or(isFor, isAgainst)), voterWeight, TFHE.asEuint32(0))
+        );
+        
+        hasVoted[_proposalId][msg.sender] = true;
+        emit VoteCast(_proposalId, msg.sender);
+    }
+}
