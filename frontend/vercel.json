@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ],
+  "env": {
+    "VITE_CONTRACT_ADDRESS": "0x7c04dD380e26B56899493ec7A654EdEf108A2414",
+    "VITE_RPC_URL": "https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161",
+    "VITE_APP_NAME": "Corporate Governance DApp",
+    "VITE_APP_DESCRIPTION": "机密股东投票 - 企业决策隐私投票系统"
+  }
+}
