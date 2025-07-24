@@ -1,0 +1,48 @@
+{
+  "name": "confidential-shareholder-voting",
+  "version": "1.0.0",
+  "description": "Confidential shareholder voting system using Zama FHE protocol for corporate governance",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "build": "hardhat compile",
+    "test": "hardhat test",
+    "coverage": "hardhat coverage",
+    "deploy": "hardhat ignition deploy ./ignition/modules/ConfidentialShareholderVoting.js",
+    "deploy:local": "hardhat ignition deploy ./ignition/modules/ConfidentialShareholderVoting.js --network localhost",
+    "deploy:sepolia": "hardhat ignition deploy ./ignition/modules/ConfidentialShareholderVoting.js --network sepolia",
+    "node": "hardhat node",
+    "dev": "concurrently \"npm run node\" \"npm run frontend\"",
+    "frontend": "cd frontend && npm start",
+    "html": "node start-html.js",
+    "start": "node start-html.js"
+  },
+  "keywords": [
+    "blockchain",
+    "ethereum",
+    "FHE",
+    "privacy",
+    "voting",
+    "governance",
+    "shareholder",
+    "zama",
+    "confidential"
+  ],
+  "author": "Corporate Governance DApp Developer",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/chai": "^5.0.0",
+    "@types/mocha": "^10.0.8",
+    "chai": "^5.1.1",
+    "hardhat": "^2.22.0",
+    "hardhat-gas-reporter": "^2.2.1",
+    "solidity-coverage": "^0.8.12",
+    "concurrently": "^9.0.1"
+  },
+  "dependencies": {
+    "ethers": "^6.9.2",
+    "dotenv": "^16.3.1",
+    "@openzeppelin/contracts": "^5.0.1"
+  }
+}
