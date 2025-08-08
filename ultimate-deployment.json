@@ -1,0 +1,9 @@
+{
+  "contractAddress": "0x7c04dD380e26B56899493ec7A654EdEf108A2414",
+  "network": "hardhat",
+  "contractName": "CorporateGovernanceUltimate",
+  "theme": "机密股东投票 - 企业决策隐私投票",
+  "stackOptimized": true,
+  "compilationGuaranteed": true,
+
+}
