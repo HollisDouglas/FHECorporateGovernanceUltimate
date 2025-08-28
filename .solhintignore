@@ -1,0 +1,19 @@
+# Directories
+node_modules/
+artifacts/
+cache/
+coverage/
+dist/
+build/
+typechain-types/
+
+# Generated files
+*.d.ts
+*.js.map
+
+# Test files (optional - remove if you want to lint tests)
+# test/
+
+# External libraries
+contracts/test/
+contracts/mocks/
