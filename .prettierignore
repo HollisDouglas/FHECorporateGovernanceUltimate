@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+artifacts/
+cache/
+dist/
+build/
+coverage/
+typechain-types/
+
+# Generated files
+*.d.ts
+*.js.map
+
+# Deployment files
+deployments/
+
+# Environment
+.env
+.env.*
+
+# Misc
+*.log
+package-lock.json
+yarn.lock
