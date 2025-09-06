@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+artifacts/
+cache/
+coverage/
+dist/
+build/
+typechain-types/
+
+# Config files
+*.config.js
+hardhat.config.js
+
+# Generated files
+*.d.ts
+*.js.map
+
+# Deployment
+deployments/
+
+# Environment
+.env
+.env.*
