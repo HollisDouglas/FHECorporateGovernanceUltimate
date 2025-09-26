@@ -1,131 +1,120 @@
-import { ethers } from "hardhat";
-import hre from "hardhat";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const { ethers } = require("hardhat");
+const fs = require("fs");
+const path = require("path");
 
 async function main() {
-  console.log("========================================");
-  console.log("Contract Interaction Script");
-  console.log("========================================\n");
+  console.log("Starting contract interaction script...");
 
   // Get signers
-  const [deployer, shareholder1, shareholder2] = await ethers.getSigners();
-
+  const [deployer, creator, contributor1, contributor2] = await ethers.getSigners();
+  
   // Load deployment info
-  const deploymentsDir = path.join(__dirname, "..", "deployments");
-  const files = fs.readdirSync(deploymentsDir)
-    .filter(f => f.startsWith(`deployment-${hre.network.name}`))
-    .sort()
-    .reverse();
-
-  if (files.length === 0) {
-    throw new Error("No deployment found. Please deploy the contract first.");
+  const deploymentFile = path.join(__dirname, "..", "deployments", `${hre.network.name}.json`);
+  
+  if (!fs.existsSync(deploymentFile)) {
+    console.error("Deployment file not found. Please deploy contracts first.");
+    return;
   }
 
-  const deploymentPath = path.join(deploymentsDir, files[0]);
-  const deploymentInfo = JSON.parse(fs.readFileSync(deploymentPath, "utf8"));
-
-  console.log("Loading deployed contract...");
-  console.log("Network:", deploymentInfo.network);
-  console.log("Contract Address:", deploymentInfo.contractAddress);
-  console.log();
+  const deploymentInfo = JSON.parse(fs.readFileSync(deploymentFile, "utf8"));
+  const privacyPadAddress = deploymentInfo.contracts.PrivacyPad.address;
 
   // Get contract instance
-  const CorporateGovernance = await ethers.getContractFactory("CorporateGovernanceUltimate");
-  const governance = CorporateGovernance.attach(deploymentInfo.contractAddress);
+  const PrivacyPad = await ethers.getContractFactory("PrivacyPad");
+  const privacyPad = PrivacyPad.attach(privacyPadAddress);
 
-  // Check company info
-  console.log("=== Company Information ===");
-  const companyInfo = await governance.getCompanyInfo();
-  console.log("Company Name:", companyInfo[0]);
-  console.log("Total Shares:", companyInfo[3].toString());
-  console.log("Board Members:", companyInfo[5].length);
-  console.log();
+  console.log("PrivacyPad contract loaded at:", privacyPadAddress);
+  console.log("Contract owner:", await privacyPad.owner());
 
-  // Register shareholders
-  console.log("=== Registering Shareholders ===");
-
-  const registerTx1 = await governance.addShareholder(
-    shareholder1.address,
-    10000,
-    "Alice Johnson"
+  // Example interactions
+  console.log("\n=== Creating Sample Campaign ===");
+  
+  const createTx = await privacyPad.connect(creator).createCampaign(
+    "Revolutionary Privacy Project",
+    "A groundbreaking project that will change how we think about privacy in blockchain",
+    ethers.parseEther("50"), // 50 ETH target
+    30 // 30 days duration
   );
-  await registerTx1.wait();
-  console.log("✓ Registered shareholder:", shareholder1.address);
+  
+  await createTx.wait();
+  console.log("Campaign created successfully!");
 
-  const registerTx2 = await governance.addShareholder(
-    shareholder2.address,
-    15000,
-    "Bob Smith"
+  // Get campaign details
+  const campaign = await privacyPad.getCampaign(1);
+  console.log("\nCampaign Details:");
+  console.log(`- ID: ${campaign.id}`);
+  console.log(`- Creator: ${campaign.creator}`);
+  console.log(`- Title: ${campaign.title}`);
+  console.log(`- Target Amount: ${ethers.formatEther(campaign.targetAmount)} ETH`);
+  console.log(`- Deadline: ${new Date(Number(campaign.deadline) * 1000).toLocaleString()}`);
+  console.log(`- Is Active: ${campaign.isActive}`);
+
+  console.log("\n=== Making Encrypted Contributions ===");
+
+  // Contributor 1 makes an encrypted contribution
+  const encryptedAmount1 = ethers.keccak256(ethers.toUtf8Bytes("secret_contribution_5_eth"));
+  const contributionTx1 = await privacyPad.connect(contributor1).makeEncryptedContribution(
+    1, // campaign ID
+    encryptedAmount1,
+    { value: ethers.parseEther("5") }
   );
-  await registerTx2.wait();
-  console.log("✓ Registered shareholder:", shareholder2.address);
-  console.log();
+  
+  await contributionTx1.wait();
+  console.log("Contributor 1 made encrypted contribution of 5 ETH");
 
-  // Create a proposal
-  console.log("=== Creating Proposal ===");
-  const proposalTx = await governance.createProposal(
-    0, // ProposalType.BOARD
-    "Elect new board member for technology committee",
-    7 // 7 days voting period
+  // Contributor 2 makes an encrypted contribution
+  const encryptedAmount2 = ethers.keccak256(ethers.toUtf8Bytes("secret_contribution_10_eth"));
+  const contributionTx2 = await privacyPad.connect(contributor2).makeEncryptedContribution(
+    1, // campaign ID
+    encryptedAmount2,
+    { value: ethers.parseEther("10") }
   );
-  await proposalTx.wait();
-  console.log("✓ Proposal created successfully");
+  
+  await contributionTx2.wait();
+  console.log("Contributor 2 made encrypted contribution of 10 ETH");
 
-  const totalProposals = await governance.getTotalProposals();
-  console.log("Total Proposals:", totalProposals.toString());
-  console.log();
+  // Check encrypted contributions
+  const contribution1 = await privacyPad.encryptedContributions(1);
+  const contribution2 = await privacyPad.encryptedContributions(2);
+  
+  console.log("\nEncrypted Contributions:");
+  console.log(`Contribution 1 - Contributor: ${contribution1.contributor}, Encrypted: ${contribution1.encryptedAmount}`);
+  console.log(`Contribution 2 - Contributor: ${contribution2.contributor}, Encrypted: ${contribution2.encryptedAmount}`);
 
-  // Get proposal details
-  console.log("=== Proposal Details ===");
-  const proposalInfo = await governance.getProposalInfo(1);
-  console.log("Proposal ID:", proposalInfo[0].toString());
-  console.log("Type:", proposalInfo[1].toString());
-  console.log("Title:", proposalInfo[2]);
-  console.log("Proposer:", proposalInfo[4]);
-  console.log("Deadline:", new Date(Number(proposalInfo[6]) * 1000).toLocaleString());
-  console.log("Active:", proposalInfo[7]);
-  console.log();
+  console.log("\n=== Revealing Contributions ===");
 
-  // Cast votes
-  console.log("=== Casting Votes ===");
+  // Reveal contributions
+  const revealTx1 = await privacyPad.connect(contributor1).revealContribution(1, ethers.parseEther("5"));
+  await revealTx1.wait();
+  console.log("Contributor 1 revealed contribution: 5 ETH");
 
-  const voteTx1 = await governance.connect(shareholder1).vote(1, 1); // Vote FOR
-  await voteTx1.wait();
-  console.log("✓ Shareholder 1 voted FOR");
+  const revealTx2 = await privacyPad.connect(contributor2).revealContribution(2, ethers.parseEther("10"));
+  await revealTx2.wait();
+  console.log("Contributor 2 revealed contribution: 10 ETH");
 
-  const voteTx2 = await governance.connect(shareholder2).vote(1, 1); // Vote FOR
-  await voteTx2.wait();
-  console.log("✓ Shareholder 2 voted FOR");
-  console.log();
+  // Check updated campaign stats
+  const updatedCampaign = await privacyPad.getCampaign(1);
+  console.log("\nUpdated Campaign Stats:");
+  console.log(`- Total Raised: ${ethers.formatEther(updatedCampaign.totalRaised)} ETH`);
+  console.log(`- Contributors: ${updatedCampaign.contributorCount}`);
+  console.log(`- Progress: ${(Number(updatedCampaign.totalRaised) * 100 / Number(updatedCampaign.targetAmount)).toFixed(2)}%`);
 
-  // Check voting status
-  console.log("=== Voting Status ===");
-  const hasVoted1 = await governance.hasVotedOn(1, shareholder1.address);
-  const hasVoted2 = await governance.hasVotedOn(1, shareholder2.address);
-  console.log("Shareholder 1 has voted:", hasVoted1);
-  console.log("Shareholder 2 has voted:", hasVoted2);
-  console.log();
+  // Get campaign contributors
+  const contributors = await privacyPad.getCampaignContributors(1);
+  console.log(`- Contributor addresses: ${contributors.join(", ")}`);
 
-  console.log("=== Shareholder Information ===");
-  const shareholderInfo1 = await governance.getShareholderInfo(shareholder1.address);
-  const shareholderInfo2 = await governance.getShareholderInfo(shareholder2.address);
-  console.log("Shareholder 1:", shareholderInfo1[3], "- Shares:", shareholderInfo1[1].toString());
-  console.log("Shareholder 2:", shareholderInfo2[3], "- Shares:", shareholderInfo2[1].toString());
-  console.log();
+  console.log("\n=== Platform Statistics ===");
+  console.log(`Total Campaigns: ${await privacyPad.getTotalCampaigns()}`);
+  console.log(`Total Contributions: ${await privacyPad.getTotalContributions()}`);
 
-  console.log("========================================");
-  console.log("Interaction Complete");
-  console.log("========================================");
-  console.log("\nNext Steps:");
-  console.log("- Wait for voting period to end");
-  console.log("- Run: governance.finalize(1) to close the proposal");
-  console.log("- Run: governance.getResults(1) to see voting results");
-  console.log();
+  // Show user-specific data
+  const creatorCampaigns = await privacyPad.getUserCampaigns(creator.address);
+  const contributor1Contributions = await privacyPad.getUserContributions(contributor1.address);
+  
+  console.log(`\nCreator's campaigns: ${creatorCampaigns.length}`);
+  console.log(`Contributor 1's contributions: ${contributor1Contributions.length}`);
+
+  console.log("\nInteraction script completed successfully!");
 }
 
 main()

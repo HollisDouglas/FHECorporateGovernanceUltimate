@@ -1,139 +1,174 @@
 import { ethers } from "hardhat";
 import hre from "hardhat";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 async function main() {
-  console.log("========================================");
-  console.log("Corporate Governance Platform Deployment");
-  console.log("========================================\n");
-
-  // Get network information
+  console.log("Starting SimpleVoting deployment...");
+  
+  // Get the deployer account
   const [deployer] = await ethers.getSigners();
-  const network = await ethers.provider.getNetwork();
-  const balance = await ethers.provider.getBalance(deployer.address);
+  console.log("Deploying contracts with account:", deployer.address);
+  console.log("Account balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)));
 
-  console.log("Deployment Configuration:");
-  console.log("-------------------------");
-  console.log("Network:", hre.network.name);
-  console.log("Chain ID:", network.chainId.toString());
-  console.log("Deployer Address:", deployer.address);
-  console.log("Account Balance:", ethers.formatEther(balance), "ETH\n");
+  // Deploy FHELib first
+  console.log("\nDeploying FHELib contract...");
+  const FHELib = await ethers.getContractFactory("FHELib");
+  const fheLib = await FHELib.deploy();
+  
+  await fheLib.waitForDeployment();
+  const fheLibAddress = await fheLib.getAddress();
+  
+  console.log("FHELib deployed to:", fheLibAddress);
 
-  // Validate balance
-  if (balance === 0n) {
-    throw new Error("Deployer account has insufficient ETH. Please fund the account.");
-  }
+  // Deploy SimpleVoting contract
+  console.log("\nDeploying SimpleVoting contract...");
+  const ConfidentialVoting = await ethers.getContractFactory("SimpleVoting");
+  const confidentialVoting = await ConfidentialVoting.deploy();
+  
+  await confidentialVoting.waitForDeployment();
+  const votingAddress = await confidentialVoting.getAddress();
+  
+  console.log("SimpleVoting deployed to:", votingAddress);
 
-  // Deploy the CorporateGovernanceUltimate contract
-  console.log("Deploying CorporateGovernanceUltimate contract...");
-  const CorporateGovernance = await ethers.getContractFactory("CorporateGovernanceUltimate");
-  const governance = await CorporateGovernance.deploy();
+  // Set up initial configuration
+  console.log("\nSetting up initial configuration...");
+  
+  // Add deployer as initial board member
+  const addBoardMemberTx = await confidentialVoting.addBoardMember(deployer.address);
+  await addBoardMemberTx.wait();
+  console.log("Added deployer as initial board member");
 
-  await governance.waitForDeployment();
-  const contractAddress = await governance.getAddress();
+  // Register deployer as a shareholder with some voting power
+  const registerTx = await confidentialVoting.registerShareholder(
+    deployer.address,
+    ethers.parseUnits("1000", 0), // 1000 shares
+    "FOUNDER"
+  );
+  await registerTx.wait();
+  console.log("Registered deployer as shareholder with 1000 shares");
 
-  console.log("✓ Contract deployed successfully!");
-  console.log("Contract Address:", contractAddress);
+  // Deploy FHELibTest for testing (optional)
+  console.log("\nDeploying FHELibTest contract...");
+  const FHELibTest = await ethers.getContractFactory("FHELibTest");
+  const fheLibTest = await FHELibTest.deploy();
+  
+  await fheLibTest.waitForDeployment();
+  const fheLibTestAddress = await fheLibTest.getAddress();
+  
+  console.log("FHELibTest deployed to:", fheLibTestAddress);
 
-  // Get deployment transaction details
-  const deployTx = governance.deploymentTransaction();
-  if (deployTx) {
-    console.log("Transaction Hash:", deployTx.hash);
-    const receipt = await deployTx.wait();
-    console.log("Gas Used:", receipt.gasUsed.toString());
-    console.log("Block Number:", receipt.blockNumber);
-  }
-
-  // Initialize the company
-  console.log("\nInitializing company configuration...");
-  const companyName = "Corporate Governance Platform";
-  const totalShares = 1000000; // 1 million shares
-
-  const initTx = await governance.initCompany(companyName, totalShares);
-  await initTx.wait();
-
-  console.log("✓ Company initialized");
-  console.log("Company Name:", companyName);
-  console.log("Total Shares:", totalShares.toLocaleString());
-
-  // Save deployment information
+  // Save deployment info
   const deploymentInfo = {
     network: hre.network.name,
-    chainId: network.chainId.toString(),
-    contractAddress: contractAddress,
+    chainId: hre.network.config.chainId,
     deployer: deployer.address,
-    companyName: companyName,
-    totalShares: totalShares,
-    deploymentTime: new Date().toISOString(),
-    blockNumber: deployTx ? (await deployTx.wait()).blockNumber : 0,
-    transactionHash: deployTx ? deployTx.hash : "",
+    contracts: {
+      FHELib: {
+        address: fheLibAddress,
+        deploymentTransaction: fheLib.deploymentTransaction()?.hash
+      },
+      SimpleVoting: {
+        address: votingAddress,
+        deploymentTransaction: confidentialVoting.deploymentTransaction()?.hash
+      },
+      FHELibTest: {
+        address: fheLibTestAddress,
+        deploymentTransaction: fheLibTest.deploymentTransaction()?.hash
+      }
+    },
+    deployedAt: new Date().toISOString(),
+    initialSetup: {
+      boardMembers: [deployer.address],
+      shareholders: [
+        {
+          address: deployer.address,
+          shares: "1000",
+          companyId: "FOUNDER"
+        }
+      ]
+    }
   };
 
+  // Write deployment info to file
+  import fs from "fs";
+  import path from "path";
+  import { fileURLToPath } from 'url';
+  
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  
   const deploymentsDir = path.join(__dirname, "..", "deployments");
   if (!fs.existsSync(deploymentsDir)) {
     fs.mkdirSync(deploymentsDir);
   }
-
-  const deploymentFile = path.join(
-    deploymentsDir,
-    `deployment-${hre.network.name}-${Date.now()}.json`
-  );
+  
+  const deploymentFile = path.join(deploymentsDir, `${hre.network.name}.json`);
   fs.writeFileSync(deploymentFile, JSON.stringify(deploymentInfo, null, 2));
+  
+  console.log("\n=== Deployment Summary ===");
+  console.log(`Network: ${hre.network.name}`);
+  console.log(`Chain ID: ${hre.network.config.chainId}`);
+  console.log(`FHELib: ${fheLibAddress}`);
+  console.log(`SimpleVoting: ${votingAddress}`);
+  console.log(`FHELibTest: ${fheLibTestAddress}`);
+  console.log(`Deployment info saved to: ${deploymentFile}`);
 
-  console.log("\n✓ Deployment information saved to:", deploymentFile);
+  // Verify contract state
+  console.log("\n=== Verifying Contract State ===");
+  const isBoardMember = await confidentialVoting.isBoardMember(deployer.address);
+  const shareholder = await confidentialVoting.getShareholder(deployer.address);
+  const totalProposals = await confidentialVoting.getTotalProposals();
+  
+  console.log(`Deployer is board member: ${isBoardMember}`);
+  console.log(`Deployer shares: ${shareholder.shares.toString()}`);
+  console.log(`Total proposals: ${totalProposals.toString()}`);
 
-  // Verify contract on Etherscan (if not local network)
+  // Verify contracts if on a testnet/mainnet
   if (hre.network.name !== "hardhat" && hre.network.name !== "localhost") {
-    console.log("\nWaiting for block confirmations before verification...");
-    await deployTx?.wait(6);
+    console.log("\nWaiting for block confirmations...");
+    await fheLib.deploymentTransaction()?.wait(5);
+    await confidentialVoting.deploymentTransaction()?.wait(5);
+    await fheLibTest.deploymentTransaction()?.wait(5);
 
-    console.log("Verifying contract on Etherscan...");
+    console.log("Verifying contracts...");
     try {
       await hre.run("verify:verify", {
-        address: contractAddress,
-        constructorArguments: [],
+        address: fheLibAddress,
+        constructorArguments: []
       });
-      console.log("✓ Contract verified successfully on Etherscan");
+      console.log("FHELib verified successfully");
     } catch (error) {
-      console.log("⚠ Verification failed:", error.message);
-      console.log("You can verify manually using: npm run verify:sepolia");
+      console.log("FHELib verification failed:", error.message);
+    }
+
+    try {
+      await hre.run("verify:verify", {
+        address: votingAddress,
+        constructorArguments: []
+      });
+      console.log("SimpleVoting verified successfully");
+    } catch (error) {
+      console.log("SimpleVoting verification failed:", error.message);
+    }
+
+    try {
+      await hre.run("verify:verify", {
+        address: fheLibTestAddress,
+        constructorArguments: []
+      });
+      console.log("FHELibTest verified successfully");
+    } catch (error) {
+      console.log("FHELibTest verification failed:", error.message);
     }
   }
 
-  // Display deployment summary
-  console.log("\n========================================");
-  console.log("Deployment Summary");
-  console.log("========================================");
-  console.log("Contract:", "CorporateGovernanceUltimate");
-  console.log("Address:", contractAddress);
-  console.log("Network:", hre.network.name);
-  console.log("Deployer:", deployer.address);
+  console.log("\n=== Next Steps ===");
+  console.log("1. Update frontend with the deployed contract address:");
+  console.log(`   CONTRACT_ADDRESS=${votingAddress}`);
+  console.log("2. Register additional shareholders using registerShareholder()");
+  console.log("3. Create voting proposals using createProposal()");
+  console.log("4. Test the voting functionality");
 
-  if (hre.network.name === "sepolia") {
-    console.log("\nView on Etherscan:");
-    console.log(`https://sepolia.etherscan.io/address/${contractAddress}`);
-  }
-
-  console.log("\n========================================");
-  console.log("Next Steps");
-  console.log("========================================");
-  console.log("1. Verify contract (if not done automatically):");
-  console.log("   npm run verify:sepolia");
-  console.log("\n2. Interact with the deployed contract:");
-  console.log("   npm run interact");
-  console.log("\n3. Run governance simulation:");
-  console.log("   npm run simulate\n");
-
-  return {
-    governance,
-    contractAddress,
-    deploymentInfo,
-  };
+  console.log("\nDeployment completed successfully!");
 }
 
 main()
