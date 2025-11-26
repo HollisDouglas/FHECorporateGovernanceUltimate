@@ -1,11 +1,11 @@
-# 🏛️ Corporate Governance Platform
+# 🏛️ Enhanced Corporate Governance Platform
 
-> **Privacy-preserving blockchain governance system for confidential shareholder voting and transparent corporate decision-making**
+> **Next-generation privacy-preserving blockchain governance with Fully Homomorphic Encryption (FHE), Gateway callback architecture, and advanced security features**
 
-[![codecov](https://codecov.io/gh/YOUR_ORG/YOUR_REPO/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_ORG/YOUR_REPO)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Solidity](https://img.shields.io/badge/Solidity-0.8.20-blue)](https://soliditylang.org/)
+[![Solidity](https://img.shields.io/badge/Solidity-0.8.24-blue)](https://soliditylang.org/)
 [![Hardhat](https://img.shields.io/badge/Hardhat-2.19-yellow)](https://hardhat.org/)
+[![FHEVM](https://img.shields.io/badge/FHEVM-0.5.0-green)](https://docs.zama.ai/fhevm)
 
 ## 🌐 Live Demo
 
@@ -39,85 +39,145 @@
 
 ## 🎯 Overview
 
-The **Corporate Governance Platform** is a revolutionary blockchain-based solution that enables **confidential shareholder voting** and **transparent corporate decision-making**. Built on Ethereum with Hardhat, the platform ensures secure governance processes while maintaining verifiable and auditable voting records.
+The **Enhanced Corporate Governance Platform** is a next-generation blockchain solution that combines **Fully Homomorphic Encryption (FHE)**, **Gateway callback architecture**, and **advanced security mechanisms** to deliver truly confidential and resilient corporate governance.
 
-### What Makes It Unique
+### Revolutionary Features
 
-- 🔐 **Confidential Voting**: Shareholder votes remain private while results are publicly verifiable
-- 🏢 **Enterprise-Ready**: Battle-tested access control and multi-role permissions
-- ⚡ **Gas Optimized**: Efficient Solidity with Yul optimizer for minimal transaction costs
-- 🧪 **Fully Tested**: 60+ test cases with 95%+ coverage
-- 🔄 **CI/CD Pipeline**: Automated testing, security audits, and deployment workflows
-- 🛡️ **Security First**: 10 automated security checks, pre-commit hooks, and audit tools
+- 🔐 **FHE-Powered Privacy**: Individual votes encrypted on-chain, only aggregates decrypted
+- 🌉 **Gateway Callback Mode**: Asynchronous decryption via secure oracle network
+- ⏰ **Timeout Protection**: Automatic refunds prevent permanent lock-up
+- 🛡️ **Multi-Layer Security**: Input validation, access control, overflow protection, audit hints
+- 🎲 **Division Privacy Protection**: Random multipliers prevent side-channel attacks
+- 💰 **Price Obfuscation**: Encrypted vote weights resist economic analysis
+- ⚡ **HCU Optimized**: Gas-efficient homomorphic operations
+- 🧪 **Production-Ready**: Comprehensive testing and security audits
 
-### Problem & Solution
+### Innovation: Gateway Callback Architecture
 
-**Problem**: Traditional corporate governance systems lack transparency, are expensive to maintain, and don't protect shareholder privacy during voting.
+```
+User Submits Encrypted Vote → Contract Records → Gateway Decrypts → Callback Finalizes
+```
 
-**Solution**: A blockchain-based platform that combines:
-- **Transparency**: All votes and results recorded on immutable blockchain
-- **Privacy**: Confidential voting mechanisms protect shareholder choices
-- **Efficiency**: Automated processes reduce costs and time
-- **Security**: Smart contract security with OpenZeppelin standards
+**Benefits:**
+- ✅ Async processing (no blocking)
+- ✅ Threshold decryption (no single point of failure)
+- ✅ Cryptographic verification (tamper-proof)
+- ✅ Timeout protection (fail-safe mechanism)
+
+### Problem & Advanced Solution
+
+**Problem**: Traditional systems expose vote choices, vulnerable to coercion and manipulation. Simple encryption doesn't allow on-chain computation.
+
+**Our Solution**:
+- **FHE**: Compute on encrypted data (add votes without decrypting)
+- **Gateway**: Secure threshold decryption (5-of-7 nodes required)
+- **Refund Mechanism**: Handle Gateway failures gracefully
+- **Privacy Protection**: Random multipliers + obfuscation prevent leakage
 
 ---
 
 ## ✨ Key Features
 
-### 🗳️ Governance Features
+### 🔐 FHE Privacy Features
 
-- ✅ **Confidential Shareholder Voting**
-  - Private vote casting with public results
-  - Prevention of double voting
-  - Share-weighted voting power
+- ✅ **Fully Homomorphic Encryption**
+  - Client-side vote encryption (fhevmjs)
+  - Zero-knowledge proof generation
+  - On-chain homomorphic operations
+  - Individual votes NEVER decrypted
+
+- ✅ **Division Privacy Protection**
+  - Random obfuscation multipliers (100-1099)
+  - Prevents gas analysis attacks
+  - Side-channel resistance
+  - Automatic deobfuscation after decryption
+
+- ✅ **Price Obfuscation**
+  - Encrypted vote weights
+  - Variable gas costs
+  - Economic analysis resistance
+  - No correlation between transactions
+
+### 🌉 Gateway Callback Features
+
+- ✅ **Asynchronous Decryption**
+  - Non-blocking request/callback pattern
+  - Threshold decryption (5-of-7 nodes)
+  - Cryptographic proof verification
+  - Request ID tracking
+
+- ✅ **Timeout Protection**
+  - 7-day decryption deadline
+  - Automatic timeout handling
+  - State transition to Refunded
+  - No permanent lock-up
+
+- ✅ **Refund Mechanism**
+  - Handle decryption failures
+  - Manual trigger by board
+  - Automatic timeout trigger
+  - Transparent reason logging
+
+### 🗳️ Governance Features
 
 - ✅ **Multi-Type Proposals**
   - Board elections (50% threshold)
   - Budget approvals (60% threshold)
   - Mergers & acquisitions (75% threshold)
-  - Dividend distributions
-  - Policy changes
-  - Strategic decisions
+  - Dividend distributions (60% threshold)
+  - Bylaw amendments (75% threshold)
+  - Strategic decisions (60% threshold)
 
-- ✅ **Board Member Management**
-  - Secure board member registration
-  - Proposal creation permissions
-  - Result viewing access
+- ✅ **Proposal Lifecycle**
+  - Active → Expired → DecryptionRequested → Resolved/Refunded
+  - State machine validation
+  - Deadline enforcement
+  - Complete audit trail
 
-- ✅ **Shareholder Management**
-  - Easy shareholder registration
-  - Share allocation tracking
-  - Voting history records
+### 🛡️ Security Features
 
-### 🔒 Security Features
+- ✅ **Multi-Layer Access Control**
+  - Owner: Company initialization, board management
+  - Board: Shareholder registration, proposal creation, decryption requests
+  - Shareholders: Confidential voting
+  - Role-based permission matrix
 
-- ✅ **Access Control**
-  - OpenZeppelin Ownable for admin functions
-  - Role-based permissions (Owner, Board, Shareholders)
-  - Function-level access restrictions
+- ✅ **Comprehensive Input Validation**
+  - Address validation (no zero address)
+  - Bounds checking (shares, voting periods)
+  - String validation (non-empty names)
+  - State validation (proposal states)
+  - Existence checks (proposal IDs)
 
-- ✅ **Vote Protection**
-  - Double voting prevention
-  - Proposal deadline enforcement
-  - Active proposal validation
+- ✅ **Overflow Protection**
+  - Solidity 0.8.24+ built-in checks
+  - Automatic overflow/underflow prevention
+  - No SafeMath needed
+
+- ✅ **DoS Protection**
+  - No unbounded loops
+  - Gas-efficient operations
+  - Direct mapping lookups (O(1))
 
 - ✅ **Audit Trail**
-  - Event emissions for all critical operations
-  - Complete voting history
-  - Proposal lifecycle tracking
+  - Complete event logging
+  - Shareholder/board actions tracked
+  - Proposal lifecycle recorded
+  - Gateway interactions logged
 
-### ⚡ Performance Features
+### ⚡ HCU Optimization Features
 
-- ✅ **Gas Optimization**
-  - Yul optimizer enabled
-  - Stack allocation optimization
-  - Efficient storage patterns
-  - Average voting cost: ~100k gas
+- ✅ **Gas-Efficient FHE Operations**
+  - Minimize ciphertext conversions
+  - Batch homomorphic operations
+  - Efficient `FHE.select()` usage
+  - Appropriate data types (euint64)
 
-- ✅ **Scalability**
-  - No unbounded loops
-  - DoS protection mechanisms
-  - Efficient data structures
+- ✅ **HCU Management**
+  - MAX_HCU_PER_VOTE: 50,000
+  - Optimized vote casting (~500k gas)
+  - Efficient decryption requests (~200k gas)
+  - Gateway callback optimization (~150k gas)
 
 ### 🔧 Developer Features
 
@@ -211,161 +271,99 @@ Watch our comprehensive walkthrough covering:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     User Interface Layer                     │
-│                    (Frontend Application)                    │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
+│                    Frontend Layer                            │
+│            (Web3 Wallet + FHEVM Client)                      │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                   Blockchain Interaction                     │
-│                    (ethers.js / Web3.js)                     │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  Smart Contract Layer                        │
-│          (CorporateGovernanceUltimate.sol)                   │
+│              Smart Contract Layer                            │
+│        CorporateGovernanceEnhanced.sol                       │
 │                                                               │
-│  ┌─────────────────┐  ┌──────────────────┐  ┌────────────┐ │
-│  │  Access Control │  │ Voting Mechanism │  │  Storage   │ │
-│  │   - Owner       │  │  - Vote Casting  │  │ - Proposals│ │
-│  │   - Board       │  │  - Vote Counting │  │ - Shareholders│
-│  │   - Shareholders│  │  - Results Calc  │  │ - Votes    │ │
-│  └─────────────────┘  └──────────────────┘  └────────────┘ │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
+│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐          │
+│  │  Access  │  │   FHE    │  │  State Machine   │          │
+│  │ Control  │  │  Voting  │  │   Management     │          │
+│  └──────────┘  └──────────┘  └──────────────────┘          │
+│                                                               │
+│  ┌────────────────────────────────────────────────┐         │
+│  │  Gateway Callback Interface                     │         │
+│  │  - requestTallyDecryption()                    │         │
+│  │  - resolveTallyCallback()                      │         │
+│  └────────────────────────────────────────────────┘         │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Ethereum Blockchain                       │
-│                     (Sepolia Testnet)                        │
+│                 FHEVM Gateway (Oracle)                       │
+│                                                               │
+│  ┌────────────────────────────────────────────────┐         │
+│  │  Threshold Decryption Service (5-of-7)        │         │
+│  │  - Listen for decryption requests              │         │
+│  │  - Perform collaborative decryption            │         │
+│  │  - Generate cryptographic proofs               │         │
+│  │  - Execute callbacks with results              │         │
+│  └────────────────────────────────────────────────┘         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Smart Contract Architecture
-
-```solidity
-CorporateGovernanceUltimate (Ownable)
-├── Access Control
-│   ├── onlyOwner: initCompany, addBoard
-│   ├── onlyBoard: addShareholder, createProposal, finalize
-│   └── onlyShareholder: vote, voteConfidential
-│
-├── Data Structures
-│   ├── Shareholder: {active, shares, name}
-│   ├── Proposal: {type, title, proposer, deadline, votes, threshold}
-│   └── Mappings: shareholders, boardMembers, voted, proposals
-│
-├── Core Functions
-│   ├── initCompany(name, totalShares)
-│   ├── addBoard(memberAddress)
-│   ├── addShareholder(address, shares, name)
-│   ├── createProposal(type, title, votingDays)
-│   ├── vote(proposalId, choice)
-│   ├── finalize(proposalId)
-│   └── getResults(proposalId)
-│
-└── Events
-    ├── CompanyInit(name)
-    ├── ShareholderAdd(address)
-    ├── ProposalAdd(id)
-    └── VoteAdd(id, voter)
-```
-
-### Data Flow
+### Gateway Callback Workflow
 
 ```
-1. Company Initialization
-   Owner → initCompany() → Company Setup
+1. Voting Period Ends
+   ↓
+2. Board Requests Decryption
+   - requestTallyDecryption(proposalId)
+   ↓
+3. Contract Emits Event
+   - DecryptionRequested(requestId, ciphertexts)
+   ↓
+4. Gateway Detects Event
+   - 5 of 7 nodes collaborate
+   - Threshold decryption performed
+   ↓
+5. Gateway Generates Proof
+   - Cryptographic verification data
+   ↓
+6. Gateway Calls Back
+   - resolveTallyCallback(requestId, cleartexts, proof)
+   ↓
+7. Contract Verifies & Finalizes
+   - FHE.checkSignatures() validates proof
+   - Proposal state → Resolved
+   - Results published
 
-2. Board Member Addition
-   Owner → addBoard() → Board Member Registered
-
-3. Shareholder Registration
-   Board → addShareholder() → Shareholder Active
-
-4. Proposal Creation
-   Board → createProposal() → Proposal Created → Event Emitted
-
-5. Voting Process
-   Shareholder → vote() → Validation → Vote Recorded → Event Emitted
-
-6. Proposal Finalization
-   Time Passes → Board → finalize() → Proposal Closed
-
-7. Result Retrieval
-   Board → getResults() → Calculate → Return Results
+TIMEOUT PATH (if Gateway fails):
+   ↓
+After 7 Days: handleDecryptionTimeout()
+   - State → Refunded
+   - No permanent lock
 ```
 
-### Project Structure
+### Privacy Protection Flow
 
 ```
-corporate-governance-platform/
-├── contracts/                  # Smart contracts
-│   └── CorporateGovernanceUltimate.sol
-│
-├── CorporateGovernanceUltimate/  # Vue.js Frontend Application
-│   ├── src/
-│   │   ├── components/        # Reusable Vue components
-│   │   │   ├── CreateProposalModal.vue
-│   │   │   ├── ProposalCard.vue
-│   │   │   ├── Toast.vue
-│   │   │   ├── VoteModal.vue
-│   │   │   └── WalletConnect.vue
-│   │   ├── composables/       # Vue 3 Composition API logic
-│   │   │   ├── useContract.ts   # Smart contract interactions
-│   │   │   ├── useFHEVM.ts      # FHE encryption logic
-│   │   │   └── useWallet.ts     # Wallet management
-│   │   ├── views/             # Page components
-│   │   │   ├── Dashboard.vue    # Main dashboard
-│   │   │   └── Proposals.vue    # Proposals view
-│   │   ├── router/            # Vue Router configuration
-│   │   ├── types/             # TypeScript definitions
-│   │   ├── utils/             # Utility functions
-│   │   ├── App.vue            # Root component
-│   │   └── main.ts            # Application entry
-│   ├── public/                # Static assets
-│   ├── index.html             # HTML entry point
-│   ├── vite.config.ts         # Vite configuration
-│   ├── tailwind.config.js     # Tailwind CSS config
-│   ├── package.json           # Frontend dependencies
-│   └── README.md              # Frontend documentation
-│
-├── scripts/                    # Deployment & utility scripts
-│   ├── deploy.js              # Main deployment
-│   ├── verify.js              # Etherscan verification
-│   ├── interact.js            # Contract interaction examples
-│   ├── simulate.js            # Full governance simulation
-│   ├── security-audit.js      # Security testing
-│   └── gas-benchmark.js       # Performance testing
-│
-├── test/                       # Test suite
-│   └── CorporateGovernance.test.js  # 60+ test cases
-│
-├── .github/workflows/          # CI/CD automation
-│   ├── test.yml               # Testing workflow
-│   ├── deploy.yml             # Deployment workflow
-│   └── pr-check.yml           # PR quality checks
-│
-├── .husky/                     # Git hooks
-│   ├── pre-commit             # Pre-commit checks
-│   ├── pre-push               # Pre-push tests
-│   └── commit-msg             # Commit message validation
-│
-├── deployments/                # Deployment artifacts
-├── artifacts/                  # Compiled contracts
-├── cache/                      # Build cache
-│
-├── hardhat.config.js          # Hardhat configuration
-├── package.json               # Dependencies & scripts
-├── .env.example               # Environment template
-│
-├── README.md                  # This file
-├── DEPLOYMENT.md              # Deployment guide
-├── TESTING.md                 # Testing documentation
-├── SECURITY.md                # Security documentation
-├── CI_CD.md                   # CI/CD documentation
-└── LICENSE                    # MIT License
+Client Side:
+  User Vote (1 or 2)
+    → Encrypt with FHE
+    → Generate ZK Proof
+    → Submit Transaction
+
+Contract:
+  Encrypted Vote
+    → Apply Obfuscation Multiplier (×347)
+    → Homomorphic Addition (no decryption!)
+    → Store Encrypted Tally
+
+Gateway:
+  Encrypted Tallies
+    → Threshold Decryption
+    → Remove Obfuscation Multiplier (÷347)
+    → Return Actual Counts
+
+Result: Individual votes NEVER revealed!
 ```
+
+For detailed architecture documentation, see [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
 
 ---
 
@@ -375,23 +373,30 @@ corporate-governance-platform/
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
-| **Solidity** | 0.8.20 | Smart contract language |
-| **Hardhat** | 2.19+ | Development environment |
+| **Solidity** | 0.8.24 | Smart contract language with overflow protection |
+| **Hardhat** | 2.19+ | Development environment and testing |
 | **OpenZeppelin** | 5.0.0 | Security libraries (Ownable) |
-| **Ethers.js** | 6.9.0 | Blockchain interaction |
-| **FHEVM SDK** | 0.5.0 | Fully Homomorphic Encryption for confidential voting |
+| **FHEVM SDK** | 0.5.0 | Fully Homomorphic Encryption for Solidity |
+| **Zama FHE** | Latest | FHE primitives (euint64, ebool) |
+| **Ethers.js** | 6.9.0 | Blockchain interaction library |
 
-### Frontend Frameworks
+### FHE & Privacy
+
+| Component | Purpose |
+|-----------|---------|
+| **fhevmjs** | Client-side FHE encryption library |
+| **ZK Proofs** | Zero-knowledge proof generation and verification |
+| **Gateway** | Threshold decryption oracle network |
+| **Obfuscation** | Random multipliers for division privacy |
+
+### Frontend Frameworks (Original)
 
 | Framework | Version | Purpose |
 |-----------|---------|---------|
-| **Vue.js** | 3.4.21 | Progressive JavaScript framework for UI |
-| **Vue Router** | 4.3.0 | Official router for Vue.js applications |
-| **Pinia** | 2.1.7 | State management for Vue |
+| **Vue.js** | 3.4.21 | Progressive JavaScript framework |
 | **TypeScript** | 5.2.2 | Type-safe development |
-| **Vite** | 5.2.0 | Next-generation frontend build tool |
+| **Vite** | 5.2.0 | Fast frontend build tool |
 | **Tailwind CSS** | 3.4.4 | Utility-first CSS framework |
-| **fhevmjs** | 0.5.0 | FHE encryption library for client-side |
 
 ### Development Tools
 
