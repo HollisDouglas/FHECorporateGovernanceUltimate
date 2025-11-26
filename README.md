@@ -9,7 +9,9 @@
 
 ## 🌐 Live Demo
 
-**🔗 Platform**: [https://fhe-corporate-governance-ultimate.vercel.app/-platform.vercel.app](https://fhe-corporate-governance-ultimate.vercel.app/-platform.vercel.app)
+**🔗 Platform**: [https://fhe-corporate-governance-ultimate.vercel.app/](https://fhe-corporate-governance-ultimate.vercel.app/)
+
+**🔗 Demo Video**: demo.mp4
 
 **📱 Contract**: `0x7c04dD380e26B56899493ec7A654EdEf108A2414` (Sepolia)
 
